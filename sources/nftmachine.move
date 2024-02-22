@@ -91,10 +91,10 @@ module nftmachine_addr::nftmachine {
             royalty_payee_address,
             royalty_points_numerator,
             royalty_points_denominator,
-            collection_mutate_config: create_collection_mutability_config(&vector<bool>[ false, false, false ]),
+            collection_mutate_config: create_collection_mutability_config(&collection_mutate_config),
             token_counter: 1,
             // Token
-            token_mutate_config: create_token_mutability_config(&vector<bool>[ false, false, false, false, false ]),
+            token_mutate_config: create_token_mutability_config(&token_mutate_config),
         });
 
         token::create_collection(
@@ -103,7 +103,7 @@ module nftmachine_addr::nftmachine {
             collection_description,
             collection_uri,
             maximum_supply, 
-            vector<bool>[ false, false, false ]
+            collection_mutate_config
         );
     }
 
