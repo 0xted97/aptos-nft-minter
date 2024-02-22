@@ -65,10 +65,10 @@ module nftmachine_addr::nftmachine {
         assert_is_admin(admin_addr);
 
         let collection_name = string::utf8(b"Collection name");
-        let collection_description = string::utf8(b"Description");
-        let collection_uri = string::utf8(b"Collection uri");
+        let collection_description = string::utf8(b"Collection description");
+        let collection_uri = string::utf8(b"https://api.pudgypenguins.io/lil/100");
         let token_name = string::utf8(b"Token name");
-        let token_uri = string::utf8(b"Token uri");
+        let token_uri = string::utf8(b"https://api.pudgypenguins.io/lil/");
         let maximum_supply = 0;
         let royalty_points_numerator = 100;
         let royalty_points_denominator = 1000;
@@ -116,7 +116,13 @@ module nftmachine_addr::nftmachine {
     }
 
 
-
+    // ======================================================================
+    //   view functions //
+    // ======================================================================
+    // #[view]
+    // public fun get_nft_collection(): CollectionConfig acquires CollectionConfig {
+    //     borrow_global<CollectionConfig>(@nftmachine)
+    // }
 
     // ======================================================================
     //   private helper functions //
@@ -135,7 +141,9 @@ module nftmachine_addr::nftmachine {
 
         let token_description = string::utf8(b"Token description");
 
-
+        // NOTE: Test, remove it later
+        let token_uri = collection_config.collection_uri;
+        string::append(&mut token_uri, token_id);
         let resource_signer = create_signer_with_capability(&nft_machine_config.signer_cap);
         let token_data_id = create_tokendata(
                 &resource_signer,
@@ -143,7 +151,7 @@ module nftmachine_addr::nftmachine {
                 token_name,
                 token_description,
                 collection_config.collection_maximum,
-                collection_config.collection_uri,
+                token_uri,
                 collection_config.royalty_payee_address,
                 collection_config.royalty_points_denominator,
                 collection_config.royalty_points_numerator,
