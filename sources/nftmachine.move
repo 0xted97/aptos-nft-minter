@@ -151,6 +151,9 @@ module nftmachine_addr::nftmachine {
         royalty_points_denominator: u64,
         royalty_points_numerator: u64
     ) acquires CollectionConfig, ResourceInfo {
+        // Check exist resource in candymachine like ResourceInfo, CollectionConfig
+        // assert!(!exists<ResourceInfo>(candymainchine), error::permission_denied(ECOLLECTION_ALREADY_CREATED));
+
         let admin_addr = signer::address_of(admin);
         let resource_info = borrow_global_mut<ResourceInfo>(candymachine);
         let collection_config = borrow_global_mut<CollectionConfig>(candymachine);
@@ -198,6 +201,9 @@ module nftmachine_addr::nftmachine {
         royalty_points_numerator: u64,
         royalty_points_denominator: u64,
     ) acquires CollectionConfig, ResourceInfo {
+        // Check exist resource in candymachine like ResourceInfo, CollectionConfig
+        // assert!(!exists<ResourceInfo>(candymainchine), error::permission_denied(ECOLLECTION_ALREADY_CREATED));
+        
         let admin_addr = signer::address_of(admin);
         let resource_info = borrow_global_mut<ResourceInfo>(candymachine);
         let collection_config = borrow_global_mut<CollectionConfig>(candymachine);
