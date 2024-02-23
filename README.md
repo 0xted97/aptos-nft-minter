@@ -8,3 +8,4 @@ aptos move create-resource-account-and-publish-package --seed 1 --address-name n
 
 Default URI
 token_uri=https://api.pudgypenguins.io/lil/100
+example_collection = 0x6c9c061da4f32ea865499256a7cd8c44a0245d5b88dd1e9a61cf453447ac16e2

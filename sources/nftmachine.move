@@ -8,12 +8,19 @@ module nftmachine_addr::nftmachine {
     use aptos_framework::account::{Self, SignerCapability, create_resource_account, create_signer_with_capability};
     use aptos_framework::event::{Self, EventHandle};
     use aptos_framework::resource_account;
-    use aptos_token::token::{Self, TokenId, CollectionMutabilityConfig, TokenMutabilityConfig, create_tokendata, create_token_data_id, mint_token, direct_transfer, create_collection_mutability_config, create_token_mutability_config};
+    use aptos_token::token::{
+        Self, TokenId, CollectionMutabilityConfig, TokenMutabilityConfig, 
+        create_tokendata, create_token_data_id, mint_token, direct_transfer, 
+        create_collection_mutability_config, create_token_mutability_config, 
+        mutate_collection_description, mutate_collection_uri, mutate_collection_maximum,
+        mutate_tokendata_description, mutate_tokendata_uri ,mutate_tokendata_royalty,
+    };
 
     // Errors
     const ENOT_ADMIN: u64 = 0;
     const ENO_COIN_CAP: u64 = 1;
     const ENOT_ALREADY: u64 = 2;
+    const EINVALID_ROYALTY_NUMERATOR_DENOMINATOR: u64 = 3;
     const INVALID_MUTABLE_CONFIG:u64 = 7;
 
     struct NFTMachineConfig has key {
@@ -24,12 +31,19 @@ module nftmachine_addr::nftmachine {
     struct ResourceInfo has key {
         source: address,
         resource_cap: SignerCapability,
-        token_minting_events: EventHandle<NFTMintMintingEvent>
+        token_minting_events: EventHandle<NFTMintMintingEvent>,
+        collection_update_events: EventHandle<NFTUpdateEvent>,
     }
 
     struct NFTMintMintingEvent has drop, store {
         token_receiver_address: address,
         token_id: TokenId
+    }
+
+    struct NFTUpdateEvent has drop, store {
+        royalty_payee_address: address,
+        royalty_points_denominator: u64,
+        royalty_points_numerator: u64,
     }
 
     struct CollectionConfig has key {
@@ -59,7 +73,7 @@ module nftmachine_addr::nftmachine {
         collection_name: String,
         collection_description: String,
         collection_uri: String,
-        maximum_supply: u64,
+        collection_maximum: u64,
         royalty_payee_address: address,
         royalty_points_denominator: u64,
         royalty_points_numerator: u64,
@@ -74,11 +88,15 @@ module nftmachine_addr::nftmachine {
         move_to<ResourceInfo>(&resource_signer_from_cap, ResourceInfo {
             source: account_addr,
             resource_cap: resource_cap,
-            token_minting_events: account::new_event_handle<NFTMintMintingEvent>(&resource_signer_from_cap)
+            token_minting_events: account::new_event_handle<NFTMintMintingEvent>(&resource_signer_from_cap),
+            collection_update_events: account::new_event_handle<NFTUpdateEvent>(&resource_signer_from_cap),
         });
 
         // Start Validate inputs here.
-        // assert!(vector::length(&collection_mutate_config) == 3 && vector::length(&token_mutate_config) == 5, INVALID_MUTABLE_CONFIG);
+        assert!(vector::length(&collection_mutate_config) == 3 && vector::length(&token_mutate_config) == 5, INVALID_MUTABLE_CONFIG);
+        assert!(royalty_points_denominator > 0, EINVALID_ROYALTY_NUMERATOR_DENOMINATOR);
+        assert!(royalty_points_numerator <= royalty_points_denominator, EINVALID_ROYALTY_NUMERATOR_DENOMINATOR);
+
         // End Validate inputs here.
 
         // Token
@@ -86,7 +104,7 @@ module nftmachine_addr::nftmachine {
         move_to(&resource_signer_from_cap, CollectionConfig {
             collection_name,
             collection_description,
-            collection_maximum: maximum_supply,
+            collection_maximum: collection_maximum,
             collection_uri,
             royalty_payee_address,
             royalty_points_numerator,
@@ -102,7 +120,7 @@ module nftmachine_addr::nftmachine {
             collection_name,
             collection_description,
             collection_uri,
-            maximum_supply, 
+            collection_maximum, 
             collection_mutate_config
         );
     }
@@ -122,14 +140,93 @@ module nftmachine_addr::nftmachine {
         nft_mint_config.treasury = new_treasury_address;
     }
 
+    /// @dev: Update collection_info, mint token will get royalty in collection_info
+    public entry fun update_collection(
+        admin: &signer, 
+        candymachine: address,
+        collection_description: String,
+        collection_uri: String,
+        collection_maximum: u64,
+        royalty_payee_address: address,
+        royalty_points_denominator: u64,
+        royalty_points_numerator: u64
+    ) acquires CollectionConfig, ResourceInfo {
+        let admin_addr = signer::address_of(admin);
+        let resource_info = borrow_global_mut<ResourceInfo>(candymachine);
+        let collection_config = borrow_global_mut<CollectionConfig>(candymachine);
+
+        // Start Validate
+        assert!(admin_addr == resource_info.source, error::permission_denied(ENOT_ADMIN));
+        assert!(royalty_points_denominator > 0, EINVALID_ROYALTY_NUMERATOR_DENOMINATOR);
+        assert!(royalty_points_numerator <= royalty_points_denominator, EINVALID_ROYALTY_NUMERATOR_DENOMINATOR);
+        // End Validate
+
+        collection_config.collection_description = collection_description;
+        collection_config.collection_uri = collection_uri;
+        collection_config.collection_maximum = collection_maximum;
+        collection_config.royalty_payee_address = royalty_payee_address;
+        collection_config.royalty_points_numerator = royalty_points_numerator;
+        collection_config.royalty_points_denominator = royalty_points_denominator;
+
+        // Update collection resource
+        let resource_signer_from_cap = account::create_signer_with_capability(&resource_info.resource_cap);
+
+        mutate_collection_description(&resource_signer_from_cap, collection_config.collection_name, collection_description);
+        mutate_collection_uri(&resource_signer_from_cap, collection_config.collection_name, collection_uri);
+        mutate_collection_maximum(&resource_signer_from_cap, collection_config.collection_name, collection_maximum);
+
+        // Emit event
+        event::emit_event<NFTUpdateEvent>(
+            &mut resource_info.collection_update_events,
+            NFTUpdateEvent {
+                royalty_payee_address,
+                royalty_points_numerator,
+                royalty_points_denominator
+            }
+        );
+        
+    }
+
+    /// @dev: Update token info: desciption, uri, royalty
+    /// NODE: cannot update batch of tokens in the same time
+    public entry fun update_token(
+        admin: &signer, 
+        candymachine: address,
+        token_name: String,
+        token_description: String,
+        token_uri: String,
+        royalty_points_numerator: u64,
+        royalty_points_denominator: u64,
+    ) acquires CollectionConfig, ResourceInfo {
+        let admin_addr = signer::address_of(admin);
+        let resource_info = borrow_global_mut<ResourceInfo>(candymachine);
+        let collection_config = borrow_global_mut<CollectionConfig>(candymachine);
+
+        // Start validate
+        assert!(admin_addr == resource_info.source, error::permission_denied(ENOT_ADMIN));
+        assert!(royalty_points_denominator > 0, EINVALID_ROYALTY_NUMERATOR_DENOMINATOR);
+        assert!(royalty_points_numerator <= royalty_points_denominator, EINVALID_ROYALTY_NUMERATOR_DENOMINATOR);
+        // End validate
+
+        // Update token
+        let resource_signer_from_cap = account::create_signer_with_capability(&resource_info.resource_cap);
+        let token_data_id = create_token_data_id(candymachine, collection_config.collection_name, token_name);
+        let royalty = token::create_royalty(royalty_points_numerator, royalty_points_denominator, collection_config.royalty_payee_address);
+
+        mutate_tokendata_description(&resource_signer_from_cap, token_data_id, token_description);
+        mutate_tokendata_uri(&resource_signer_from_cap, token_data_id, token_uri);
+        mutate_tokendata_royalty(&resource_signer_from_cap, token_data_id, royalty);
+        
+    }
+
 
     // ======================================================================
     //   view functions //
     // ======================================================================
-    // #[view]
-    // public fun get_nft_collection(): CollectionConfig acquires CollectionConfig {
-    //     borrow_global<CollectionConfig>(@nftmachine)
-    // }
+    #[view]
+    public fun get_token_counter(candymachine: address): u64 acquires CollectionConfig {
+        borrow_global<CollectionConfig>(candymachine).token_counter
+    }
 
     // ======================================================================
     //   private helper functions //
