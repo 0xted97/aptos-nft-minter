@@ -3,6 +3,7 @@ module nftmachine_addr::nftmachine {
     use std::signer;
     use std::string::{Self, String};
     use std::vector;
+    use std::option::{Option};
 
     use aptos_framework::timestamp;
     use aptos_framework::account::{Self, SignerCapability, create_resource_account, create_signer_with_capability};
@@ -14,6 +15,8 @@ module nftmachine_addr::nftmachine {
         create_collection_mutability_config, create_token_mutability_config, 
         mutate_collection_description, mutate_collection_uri, mutate_collection_maximum,
         mutate_tokendata_description, mutate_tokendata_uri ,mutate_tokendata_royalty,
+        get_collection_supply, get_token_supply,
+        get_collection_mutability_description, get_collection_mutability_uri, get_collection_mutability_maximum,
     };
 
     // Errors
@@ -21,7 +24,10 @@ module nftmachine_addr::nftmachine {
     const ENO_COIN_CAP: u64 = 1;
     const ENOT_ALREADY: u64 = 2;
     const EINVALID_ROYALTY_NUMERATOR_DENOMINATOR: u64 = 3;
-    const INVALID_MUTABLE_CONFIG:u64 = 7;
+    const EINVALID_MUTABLE_CONFIG:u64 = 7;
+    const ENOT_ALREADY_COLLECTION: u64 = 12;
+    const EALREADY_COLLECTION_CREATED: u64 = 13;
+
 
     struct NFTMachineConfig has key {
         admin: address,
@@ -84,22 +90,21 @@ module nftmachine_addr::nftmachine {
         let (resource, resource_cap) = create_resource_account(account, seeds);
         let resource_signer_from_cap = create_signer_with_capability(&resource_cap);
         let account_addr = signer::address_of(account);
-        
-        move_to<ResourceInfo>(&resource_signer_from_cap, ResourceInfo {
-            source: account_addr,
-            resource_cap: resource_cap,
-            token_minting_events: account::new_event_handle<NFTMintMintingEvent>(&resource_signer_from_cap),
-            collection_update_events: account::new_event_handle<NFTUpdateEvent>(&resource_signer_from_cap),
-        });
 
         // Start Validate inputs here.
-        assert!(vector::length(&collection_mutate_config) == 3 && vector::length(&token_mutate_config) == 5, INVALID_MUTABLE_CONFIG);
+        assert!(vector::length(&collection_mutate_config) == 3 && vector::length(&token_mutate_config) == 5, EINVALID_MUTABLE_CONFIG);
         assert!(royalty_points_denominator > 0, EINVALID_ROYALTY_NUMERATOR_DENOMINATOR);
         assert!(royalty_points_numerator <= royalty_points_denominator, EINVALID_ROYALTY_NUMERATOR_DENOMINATOR);
 
         // End Validate inputs here.
 
         // Token
+        move_to<ResourceInfo>(&resource_signer_from_cap, ResourceInfo {
+            source: account_addr,
+            resource_cap: resource_cap,
+            token_minting_events: account::new_event_handle<NFTMintMintingEvent>(&resource_signer_from_cap),
+            collection_update_events: account::new_event_handle<NFTUpdateEvent>(&resource_signer_from_cap),
+        });
 
         move_to(&resource_signer_from_cap, CollectionConfig {
             collection_name,
@@ -152,7 +157,8 @@ module nftmachine_addr::nftmachine {
         royalty_points_numerator: u64
     ) acquires CollectionConfig, ResourceInfo {
         // Check exist resource in candymachine like ResourceInfo, CollectionConfig
-        // assert!(!exists<ResourceInfo>(candymainchine), error::permission_denied(ECOLLECTION_ALREADY_CREATED));
+        assert!(exists<CollectionConfig>(candymachine), error::permission_denied(ENOT_ALREADY_COLLECTION));
+        assert!(exists<ResourceInfo>(candymachine), error::permission_denied(ENOT_ALREADY_COLLECTION));
 
         let admin_addr = signer::address_of(admin);
         let resource_info = borrow_global_mut<ResourceInfo>(candymachine);
@@ -173,10 +179,24 @@ module nftmachine_addr::nftmachine {
 
         // Update collection resource
         let resource_signer_from_cap = account::create_signer_with_capability(&resource_info.resource_cap);
+        // Get muate direct from resource_info becasue config cannot change
+        let collection_mutate_config = collection_config.collection_mutate_config;
+        let is_mutate_description = get_collection_mutability_description(&collection_mutate_config);
+        let is_mutate_uri =  get_collection_mutability_uri(&collection_mutate_config);
+        let is_mutate_maximum =  get_collection_mutability_maximum(&collection_mutate_config);
 
-        mutate_collection_description(&resource_signer_from_cap, collection_config.collection_name, collection_description);
-        mutate_collection_uri(&resource_signer_from_cap, collection_config.collection_name, collection_uri);
-        mutate_collection_maximum(&resource_signer_from_cap, collection_config.collection_name, collection_maximum);
+        // Check mutate of description, uri, maximum before update
+        if (is_mutate_description) {
+            mutate_collection_description(&resource_signer_from_cap, collection_config.collection_name, collection_description);
+        };
+
+        if (is_mutate_description) {
+            mutate_collection_uri(&resource_signer_from_cap, collection_config.collection_name, collection_uri);
+        };
+        
+        if (is_mutate_description) {
+            mutate_collection_maximum(&resource_signer_from_cap, collection_config.collection_name, collection_maximum);
+        };
 
         // Emit event
         event::emit_event<NFTUpdateEvent>(
@@ -202,7 +222,8 @@ module nftmachine_addr::nftmachine {
         royalty_points_denominator: u64,
     ) acquires CollectionConfig, ResourceInfo {
         // Check exist resource in candymachine like ResourceInfo, CollectionConfig
-        // assert!(!exists<ResourceInfo>(candymainchine), error::permission_denied(ECOLLECTION_ALREADY_CREATED));
+        assert!(exists<ResourceInfo>(candymachine), error::permission_denied(ENOT_ALREADY_COLLECTION));
+        assert!(exists<CollectionConfig>(candymachine), error::permission_denied(ENOT_ALREADY_COLLECTION));
         
         let admin_addr = signer::address_of(admin);
         let resource_info = borrow_global_mut<ResourceInfo>(candymachine);
@@ -222,6 +243,16 @@ module nftmachine_addr::nftmachine {
         mutate_tokendata_description(&resource_signer_from_cap, token_data_id, token_description);
         mutate_tokendata_uri(&resource_signer_from_cap, token_data_id, token_uri);
         mutate_tokendata_royalty(&resource_signer_from_cap, token_data_id, royalty);
+    }
+
+    public fun mutate_tokendata_property(
+        account: &signer,
+        candymachine: address
+    ) {
+        // Check exist resource in candymachine like ResourceInfo, CollectionConfig
+        assert!(exists<ResourceInfo>(candymachine), error::permission_denied(ENOT_ALREADY_COLLECTION));
+        assert!(exists<CollectionConfig>(candymachine), error::permission_denied(ENOT_ALREADY_COLLECTION));
+
         
     }
 
@@ -232,6 +263,17 @@ module nftmachine_addr::nftmachine {
     #[view]
     public fun get_token_counter(candymachine: address): u64 acquires CollectionConfig {
         borrow_global<CollectionConfig>(candymachine).token_counter
+    }
+
+    #[view]
+    public fun get_collection_total_supply(creator: address, collection_name: String): Option<u64> {
+        get_collection_supply(creator, collection_name)
+    }
+
+    #[view]
+    public fun get_token_total_supply(creator: address, collection_name: String, token_name: String): Option<u64> {
+        let token_data_id = create_token_data_id(creator, collection_name, token_name);
+        get_token_supply(creator, token_data_id)
     }
 
     // ======================================================================
