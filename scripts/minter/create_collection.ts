@@ -23,7 +23,7 @@ async function main() {
                 "Highland " + Date.now(), "HL", "https://api.pudgypenguins.io/lil/100", 
                 3, 
                 "0x637b3459fa497e5a52692ec3acb1b9b1863cc284b2d8a52a10d4ffd681d7dfb1", "1000", "15", 
-                [false, false, false], [true, true, true, true, true], Date.now().toString()],
+                [false, true, false], [true, true, true, true, true], Date.now().toString()],
         },
     });
     // sign and submit transaction to chain

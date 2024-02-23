@@ -8,9 +8,9 @@ const creator = Account.fromPrivateKey({
 const aptos = new Aptos(); // Devnet
 
 async function main() {
-    const collectionName = "Highland 1708708202540";
-    const resource_account = "0x5ab36b22446d7aacc7aa8507a0a403e781c67654b59bb7d373c41e6a34138323";
-    // collection: 0x5ab36b22446d7aacc7aa8507a0a403e781c67654b59bb7d373c41e6a34138323
+    const collectionName = "Highland 1708711657440";
+    const resource_account = "0xc93167146cf281b170e1e247a604bbad3b96e82b7fb596b5624e6f4c1d6e098a";
+    // collection: 0xc93167146cf281b170e1e247a604bbad3b96e82b7fb596b5624e6f4c1d6e098a
     const collectionData = await aptos.getCollectionData({
         collectionName,
         creatorAddress: resource_account

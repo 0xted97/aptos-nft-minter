@@ -190,11 +190,11 @@ module nftmachine_addr::nftmachine {
             mutate_collection_description(&resource_signer_from_cap, collection_config.collection_name, collection_description);
         };
 
-        if (is_mutate_description) {
+        if (is_mutate_uri) {
             mutate_collection_uri(&resource_signer_from_cap, collection_config.collection_name, collection_uri);
         };
         
-        if (is_mutate_description) {
+        if (is_mutate_maximum) {
             mutate_collection_maximum(&resource_signer_from_cap, collection_config.collection_name, collection_maximum);
         };
 
