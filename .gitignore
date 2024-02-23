@@ -24,3 +24,5 @@ src/test/assets
 build/
 
 .env
+
+scripts/node_modules
