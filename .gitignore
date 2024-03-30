@@ -22,3 +22,7 @@ src/test/assets
 .aptos
 
 build/
+
+.env
+
+scripts/node_modules
