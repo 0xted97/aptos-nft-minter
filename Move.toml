@@ -13,4 +13,4 @@ rev = 'main'
 subdir = 'aptos-move/framework/aptos-token'
 
 [addresses]
-nftmachine_addr = "b2134d5a1586ff20f8ad34fa9dfd49f76dfdc6f96314e00ce91c6baaa8acf5fe"
+nftmachine_addr = "f21e00aac5066cb827ee00d33d94253cad3a72f08e38d531dbc4f3fbdb1ff7d4"

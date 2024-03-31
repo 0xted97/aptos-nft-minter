@@ -10,7 +10,7 @@ const aptos = new Aptos(); // Devnet
 
 async function main() {
     const nftmachine = process.env.NFT_MACHINE;
-    const collection_address = "0x4f942fd8d433c34d921c4f4ddcd10d751db6a377e8980ee187c50ab9b61a7f09";
+    const collection_address = "0xd7009bc1e4565f50dd3f09fcf7f1b826c794a7b177d0fd9ecb0ed4cc3e32007f";
 
     // Account
     await aptos.fundAccount({

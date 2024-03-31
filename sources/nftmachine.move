@@ -5,10 +5,8 @@ module nftmachine_addr::nftmachine {
     use std::vector;
     use std::option::{Option};
 
-    use aptos_framework::timestamp;
     use aptos_framework::account::{Self, SignerCapability, create_resource_account, create_signer_with_capability};
     use aptos_framework::event::{Self, EventHandle};
-    use aptos_framework::resource_account;
     use aptos_framework::coin;
     use aptos_framework::aptos_coin::AptosCoin;
     use aptos_token::token::{
@@ -172,12 +170,12 @@ module nftmachine_addr::nftmachine {
     }
 
     /// @dev: Mint one token at once time
-    public entry fun mint_public(receiver: &signer, candymachine: address, property_keys: vector<string::String>, property_values: vector<vector<u8>>, property_types: vector<string::String>) acquires ResourceInfo, CollectionConfig, PublicMintConfig {
+    public entry fun mint_public(receiver: &signer, candymachine: address, amount: u64) acquires ResourceInfo, CollectionConfig, PublicMintConfig {
         assert!(exists<PublicMintConfig>(candymachine), error::permission_denied(ENOT_ALREADY_COLLECTION));
         let public_mint_config = borrow_global<PublicMintConfig>(candymachine);
         let public_mint_price = public_mint_config.public_mint_price;
 
-        mint(receiver, candymachine, public_mint_price, 1, property_keys, property_values, property_types);
+        mint(receiver, candymachine, public_mint_price, amount);
     }
 
     public entry fun set_whitelist(admin: &signer)  {
@@ -317,58 +315,66 @@ module nftmachine_addr::nftmachine {
     // ======================================================================
     //   private helper functions //
     // ======================================================================
-    fun mint(nft_claimer: &signer, candymachine: address, price: u64, amount: u64, property_keys: vector<string::String>, property_values: vector<vector<u8>>, property_types: vector<string::String>) acquires ResourceInfo, CollectionConfig {
+    fun mint(nft_claimer: &signer, candymachine: address, price: u64, amount: u64) acquires ResourceInfo, CollectionConfig {
         let nft_claimer_addr = signer::address_of(nft_claimer);
         
         let collection_config = borrow_global_mut<CollectionConfig>(candymachine);
         let resource_info = borrow_global_mut<ResourceInfo>(candymachine);
         let resource_signer_from_cap = account::create_signer_with_capability(&resource_info.resource_cap);
 
-
         // Transfer Aptos token To Admin's Collection
         coin::transfer<AptosCoin>(nft_claimer, resource_info.source, price * amount);
 
-
-        let token_id = u64_to_string(collection_config.token_counter);
-
         let token_name = collection_config.token_base_name;
         string::append_utf8(&mut token_name, b": ");
-        string::append(&mut token_name, token_id);
-
+        
         let token_description = collection_config.token_description;
 
-        // NOTE: Test, remove it later
+        // NOTE: Base URI is collection uri, should admin fill them in PublicMintConfig
         let token_uri = collection_config.collection_uri;
-        string::append(&mut token_uri, token_id);
-        let token_data_id = create_tokendata(
-                &resource_signer_from_cap,
-                collection_config.collection_name,
-                token_name,
-                token_description,
-                collection_config.collection_maximum,
-                token_uri,
-                collection_config.royalty_payee_address,
-                collection_config.royalty_points_denominator,
-                collection_config.royalty_points_numerator,
-                collection_config.token_mutate_config,
-                property_keys, property_values, property_types
+
+        while(amount > 0) {
+            let token_id = u64_to_string(collection_config.token_counter);
+            string::append(&mut token_name, token_id);
+            string::append(&mut token_uri, token_id);
+
+            // NOTE: Default empty property, should admin fill them in PublicMintConfig
+            let property_keys = vector::empty<String>();
+            let property_values = vector::empty<vector<u8>>();
+            let property_types = vector::empty<String>();
+
+            let token_data_id = create_tokendata(
+                    &resource_signer_from_cap,
+                    collection_config.collection_name,
+                    token_name,
+                    token_description,
+                    collection_config.collection_maximum,
+                    token_uri,
+                    collection_config.royalty_payee_address,
+                    collection_config.royalty_points_denominator,
+                    collection_config.royalty_points_numerator,
+                    collection_config.token_mutate_config,
+                    property_keys, property_values, property_types
+                );
+
+            // let token_data_id = create_token_data_id(candymachine, collection_config.collection_name, token_name);
+
+            let token_id = mint_token(&resource_signer_from_cap, token_data_id, 1);
+            direct_transfer(&resource_signer_from_cap, nft_claimer, token_id, 1);
+
+            event::emit_event<NFTMintMintingEvent>(
+                &mut resource_info.token_minting_events,
+                NFTMintMintingEvent {
+                    token_receiver_address: nft_claimer_addr,
+                    token_id,
+                }
             );
+            
+            collection_config.token_counter = collection_config.token_counter + 1;
+            amount = amount - 1;
+        }
 
-        // let token_data_id = create_token_data_id(candymachine, collection_config.collection_name, token_name);
-
-        let token_id = mint_token(&resource_signer_from_cap, token_data_id, 1);
-        direct_transfer(&resource_signer_from_cap, nft_claimer, token_id, 1);
-
-        // Update counter
-        collection_config.token_counter = collection_config.token_counter + 1;
         
-        event::emit_event<NFTMintMintingEvent>(
-            &mut resource_info.token_minting_events,
-            NFTMintMintingEvent {
-                token_receiver_address: nft_claimer_addr,
-                token_id,
-            }
-        );
     }
 
     // fun assert_is_admin(addr: address) acquires NFTMachineConfig {
