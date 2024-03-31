@@ -9,6 +9,8 @@ The Minter project facilitates the creation of NFTs,  enabling creators to easil
 - Setup whitelist mint with time range, price, whitelist addresses
 
 ## Develop guide
+### Environment
+- aptos 3.1.0
 ### Deploy NFT Minter
 - aptos init
 - aptos move compile
