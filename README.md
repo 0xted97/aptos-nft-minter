@@ -1,12 +1,34 @@
-SEED = 1
+# Aptos NFT Minter
+
+The Minter project facilitates the creation of NFTs,  enabling creators to easily tokenize their items, articles, arts, ideas, and more.
+
+## Features
+- Create collection
+- Update collection
+- Setup public mint with time range and price
+- Setup whitelist mint with time range, price, whitelist addresses
+
+## Develop guide
+### Deploy NFT Minter
+- aptos init
+- aptos move compile
+- aptos move publish
 
 
-aptos account derive-resource-account-address --seed d --address 637b3459fa497e5a52692ec3acb1b9b1863cc284b2d8a52a10d4ffd681d7dfb1
+### Interact NFT Minter
+- cd scripts/
+- npm i
+- ts-node ./minter/[action].ts
 
-aptos move create-resource-account-and-publish-package --seed 1 --address-name nftmachine_addr
 
+## Future Improvements
+- Build Presale page for user
+- Build Management page for admin
+- Optimize Smart Contracts: Efficiency, Gas savings,
+- ...
 
-Default URI
-token_uri=https://api.pudgypenguins.io/lil/100
-token_uri=https://d2n53fle6zg0fj.cloudfront.net/metadata/lumins/32
-example_collection = 0x6c9c061da4f32ea865499256a7cd8c44a0245d5b88dd1e9a61cf453447ac16e2
+## Data example
+- URI 1: https://api.pudgypenguins.io/lil/100
+- URI 2: https://d2n53fle6zg0fj.cloudfront.net/metadata/lumins/32
+- Collection example: 0x5190fac858395e4b5b3cd54a42a6ae5096482d9f1bd0501a70ea87e8112d70fa
+

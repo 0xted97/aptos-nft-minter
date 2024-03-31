@@ -1,5 +1,6 @@
 import { Aptos, Account, Ed25519PrivateKey } from "@aptos-labs/ts-sdk";
 import 'dotenv/config';
+import { getCollection } from "../utils";
 
 const creator = Account.fromPrivateKey({
     privateKey: new Ed25519PrivateKey(process.env.NFT_CREATOR_PRIVATE_KEY || "")
@@ -8,9 +9,10 @@ const creator = Account.fromPrivateKey({
 const aptos = new Aptos(); // Devnet
 
 async function main() {
-    const collectionName = "Highland 1708711657440";
-    const resource_account = "0xc93167146cf281b170e1e247a604bbad3b96e82b7fb596b5624e6f4c1d6e098a";
-    // collection: 0xc93167146cf281b170e1e247a604bbad3b96e82b7fb596b5624e6f4c1d6e098a
+
+    const collection = getCollection();
+    const collectionName = collection.name;
+    const resource_account = collection.address;
     const collectionData = await aptos.getCollectionData({
         collectionName,
         creatorAddress: resource_account
