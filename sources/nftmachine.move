@@ -256,6 +256,8 @@ module nftmachine_addr::nftmachine {
         
     }
 
+    
+
 
     // ======================================================================
     //   view functions //
