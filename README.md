@@ -1,4 +1,10 @@
 SEED = 1
+# Environment
+
+# Install
+- aptos init
+- aptos move compile
+- aptos 
 
 
 aptos account derive-resource-account-address --seed 123  --address 637b3459fa497e5a52692ec3acb1b9b1863cc284b2d8a52a10d4ffd681d7dfb1
