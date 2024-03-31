@@ -48,6 +48,7 @@ async function main() {
         seed,
         creator: creator.accountAddress.toString(),
         nftmachine,
+        address: "",
     };
     fs.writeFileSync(COLLECTIONS_PATH, JSON.stringify(collection_info, null, 2));
 }

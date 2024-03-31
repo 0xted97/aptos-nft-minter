@@ -8,6 +8,7 @@ module nftmachine_addr::nftmachine {
     use aptos_framework::account::{Self, SignerCapability, create_resource_account, create_signer_with_capability};
     use aptos_framework::event::{Self, EventHandle};
     use aptos_framework::coin;
+    use aptos_framework::timestamp;
     use aptos_framework::aptos_coin::AptosCoin;
     use aptos_token::token::{
         Self, TokenId, CollectionMutabilityConfig, TokenMutabilityConfig, 
@@ -19,6 +20,8 @@ module nftmachine_addr::nftmachine {
         get_collection_mutability_description, get_collection_mutability_uri, get_collection_mutability_maximum,
     };
 
+    use nftmachine_addr::bucket_table::{Self, BucketTable};
+
     // Errors
     const ENOT_ADMIN: u64 = 0;
     const ENO_COIN_CAP: u64 = 1;
@@ -26,6 +29,12 @@ module nftmachine_addr::nftmachine {
     const EINVALID_ROYALTY_NUMERATOR_DENOMINATOR: u64 = 3;
     const EINVALID_MUTABLE_CONFIG:u64 = 7;
     const EINVALID_PRICE: u64 = 8;
+    const EINVALID_LENGTH: u64 = 9;
+    const EINVALID_UPDATE_DURTION_SALE: u64 = 15;
+    const EINVALID_TIME_RANGE: u64 = 16;
+    const EMINTING_IS_NOT_ENABLED: u64 = 17;
+    const EAMOUNT_EXCEEDS_MINTS_ALLOWED: u64 = 18;
+    const EACCOUNT_DOES_NOT_EXIST: u64 = 10;
     const ENOT_ALREADY_COLLECTION: u64 = 12;
     const EALREADY_COLLECTION_CREATED: u64 = 13;
 
@@ -70,8 +79,24 @@ module nftmachine_addr::nftmachine {
         token_mutate_config: TokenMutabilityConfig,
     }
 
+    struct TokenAsset has drop, store {
+        token_uri: String,
+        property_keys: vector<String>,
+        property_values: vector<vector<u8>>,
+        property_types: vector<String>,
+    }
+
     struct PublicMintConfig has key {
-       public_mint_price: u64,
+        public_mint_price: u64,
+        public_mint_start_time: u64,
+        public_mint_end_time: u64,
+    }
+
+    struct WhitelistMintConfig has key {
+        whitelisted_address: BucketTable<address, u64>, // address + amount of nft can mint
+        whitelist_mint_price: u64,
+        whitelist_mint_start_time: u64,
+        whitelist_mint_end_time: u64,
     }
 
     
@@ -147,6 +172,7 @@ module nftmachine_addr::nftmachine {
     public entry fun set_mint_public(
         admin: &signer, 
         candymachine: address,
+        public_mint_start_time: u64, public_mint_end_time: u64,
         public_mint_price: u64,
     ) acquires PublicMintConfig, ResourceInfo {
         assert!(exists<ResourceInfo>(candymachine), error::permission_denied(ENOT_ALREADY_COLLECTION));
@@ -157,29 +183,133 @@ module nftmachine_addr::nftmachine {
         // Start Validate
         assert!(admin_addr == resource_info.source, error::permission_denied(ENOT_ADMIN));
         assert!(public_mint_price > 0, EINVALID_PRICE);
+        // validate start + end time
+        assert!(public_mint_start_time < public_mint_end_time, EINVALID_TIME_RANGE);
+
         
         if(exists<PublicMintConfig>(candymachine)) {
             let public_mint_config = borrow_global_mut<PublicMintConfig>(candymachine);
+            let now = timestamp::now_seconds();
+            assert!(public_mint_config.public_mint_start_time < now, error::permission_denied(EINVALID_UPDATE_DURTION_SALE));
+
             public_mint_config.public_mint_price = public_mint_price;
+            public_mint_config.public_mint_start_time = public_mint_start_time;
+            public_mint_config.public_mint_end_time = public_mint_price;
         } else {
             let resource_signer_from_cap = account::create_signer_with_capability(&resource_info.resource_cap);
             move_to(&resource_signer_from_cap, PublicMintConfig {
                 public_mint_price,
+                public_mint_start_time,
+                public_mint_end_time,
             });
         }
     }
 
-    /// @dev: Mint one token at once time
+    /// @dev: Mint amount of token
     public entry fun mint_public(receiver: &signer, candymachine: address, amount: u64) acquires ResourceInfo, CollectionConfig, PublicMintConfig {
         assert!(exists<PublicMintConfig>(candymachine), error::permission_denied(ENOT_ALREADY_COLLECTION));
+
         let public_mint_config = borrow_global<PublicMintConfig>(candymachine);
+
+        let now = timestamp::now_seconds();
+        let is_in_time_range = public_mint_config.public_mint_start_time < now && now < public_mint_config.public_mint_end_time;
+        assert!(is_in_time_range, error::permission_denied(EMINTING_IS_NOT_ENABLED));
+
         let public_mint_price = public_mint_config.public_mint_price;
 
         mint(receiver, candymachine, public_mint_price, amount);
     }
 
-    public entry fun set_whitelist(admin: &signer)  {
-      
+    /// @dev: whitelist mint amount of token
+    /// @note: override all addresses + price
+    public entry fun set_mint_whitelist(
+        admin: &signer, 
+        candymachine: address, 
+        whitelist_mint_price: u64,
+        whitelist_mint_start_time: u64, whitelist_mint_end_time: u64,
+        addresses: vector<address>, mint_limit: vector<u64>,
+    ) acquires ResourceInfo, WhitelistMintConfig {
+        assert!(exists<ResourceInfo>(candymachine), error::permission_denied(ENOT_ALREADY_COLLECTION));
+
+        let admin_addr = signer::address_of(admin);
+        let resource_info = borrow_global_mut<ResourceInfo>(candymachine);
+
+        // Start Validate
+        assert!(admin_addr == resource_info.source, error::permission_denied(ENOT_ADMIN));
+        assert!(whitelist_mint_price > 0, EINVALID_PRICE);
+        assert!(vector::length(&addresses) == vector::length(&mint_limit), EINVALID_LENGTH);
+        // validate start + end time, cannot set whitelist if it has been already saled.
+        // Please check more case
+        assert!(whitelist_mint_start_time < whitelist_mint_end_time, EINVALID_TIME_RANGE);
+
+        if(exists<WhitelistMintConfig>(candymachine)) {
+            let whitelist_mint_config = borrow_global_mut<WhitelistMintConfig>(candymachine);
+            // Validate during period time
+            let now = timestamp::now_seconds();
+            assert!(whitelist_mint_config.whitelist_mint_start_time < now, error::permission_denied(EINVALID_UPDATE_DURTION_SALE));
+
+            whitelist_mint_config.whitelist_mint_price = whitelist_mint_price;
+            whitelist_mint_config.whitelist_mint_start_time = whitelist_mint_start_time;
+            whitelist_mint_config.whitelist_mint_end_time = whitelist_mint_end_time;
+
+            let i = 0;
+            while (i < vector::length(&addresses)) {
+                let addr = *vector::borrow(&addresses, i);
+                let limit = *vector::borrow(&mint_limit, i);
+                // Override limit of address
+                // assert!(account::exists_at(addr), error::invalid_argument(EACCOUNT_DOES_NOT_EXIST));
+                bucket_table::add(&mut whitelist_mint_config.whitelisted_address, addr, limit);
+                i = i + 1;
+            };
+            
+        } else {
+            let resource_signer_from_cap = account::create_signer_with_capability(&resource_info.resource_cap);
+            // mapping address to limit number
+            let whitelisted_address = bucket_table::new<address, u64>(vector::length(&addresses));
+            let i = 0;
+            while (i < vector::length(&addresses)) {
+                let addr = *vector::borrow(&addresses, i);
+                let limit = *vector::borrow(&mint_limit, i);
+                // Override limit of address
+                // assert!(account::exists_at(addr), error::invalid_argument(EACCOUNT_DOES_NOT_EXIST));
+                bucket_table::add(&mut whitelisted_address, addr, limit);
+                i = i + 1;
+            };
+            
+            move_to(&resource_signer_from_cap, WhitelistMintConfig {
+                whitelist_mint_price,
+                whitelisted_address,
+                whitelist_mint_start_time,
+                whitelist_mint_end_time,
+
+            });
+        }
+    }
+    
+    /// @dev: Mint amount of token
+    public entry fun mint_whitelist(receiver: &signer, candymachine: address, amount: u64) acquires ResourceInfo, CollectionConfig, WhitelistMintConfig {
+        assert!(exists<WhitelistMintConfig>(candymachine), error::permission_denied(ENOT_ALREADY_COLLECTION));
+
+        let whitelist_mint_config = borrow_global_mut<WhitelistMintConfig>(candymachine);
+
+        let now = timestamp::now_seconds();
+        let receiver_addr = signer::address_of(receiver);
+        let is_in_time_range = whitelist_mint_config.whitelist_mint_start_time < now && now < whitelist_mint_config.whitelist_mint_end_time;
+        let is_whitelist = bucket_table::contains(&whitelist_mint_config.whitelisted_address, &receiver_addr);
+
+        assert!(is_in_time_range, error::permission_denied(EMINTING_IS_NOT_ENABLED));
+        assert!(is_whitelist, error::permission_denied(EMINTING_IS_NOT_ENABLED));
+
+        // Check limit remain
+        let remaining_mint_allowed = bucket_table::borrow_mut(&mut whitelist_mint_config.whitelisted_address, receiver_addr);
+        assert!(*remaining_mint_allowed >= amount, error::invalid_argument(EAMOUNT_EXCEEDS_MINTS_ALLOWED));
+
+        // Sub remain
+        *remaining_mint_allowed = *remaining_mint_allowed - amount;
+
+        let whitelist_mint_price = whitelist_mint_config.whitelist_mint_price;
+
+        mint(receiver, candymachine, whitelist_mint_price, amount);
     }
 
     public entry fun set_treasury(admin: &signer, candymachine: address ,new_treasury_address: address) acquires NFTMachineConfig {
@@ -251,7 +381,6 @@ module nftmachine_addr::nftmachine {
                 royalty_points_denominator
             }
         );
-        
     }
 
     /// @dev: Update token info: desciption, uri, royalty
@@ -330,7 +459,7 @@ module nftmachine_addr::nftmachine {
         
         let token_description = collection_config.token_description;
 
-        // NOTE: Base URI is collection uri, should admin fill them in PublicMintConfig
+        // NOTE: Base URI is collection uri, should admin fill them in PublicMintConfig, WhitelistMintConfigs
         let token_uri = collection_config.collection_uri;
 
         while(amount > 0) {
@@ -338,7 +467,7 @@ module nftmachine_addr::nftmachine {
             string::append(&mut token_name, token_id);
             string::append(&mut token_uri, token_id);
 
-            // NOTE: Default empty property, should admin fill them in PublicMintConfig
+            // NOTE: Default empty property, should admin fill them in PublicMintConfig, WhitelistMintConfigs
             let property_keys = vector::empty<String>();
             let property_values = vector::empty<vector<u8>>();
             let property_types = vector::empty<String>();

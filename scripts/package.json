@@ -12,7 +12,8 @@
   "dependencies": {
     "@aptos-labs/ts-sdk": "^1.7.0",
     "dotenv": "^16.4.4",
-    "fs": "^0.0.1-security"
+    "fs": "^0.0.1-security",
+    "moment": "^2.30.1"
   },
   "devDependencies": {
     "@types/node": "^20.12.2",
